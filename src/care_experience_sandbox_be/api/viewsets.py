@@ -1,3 +1,4 @@
+from django.http import Http404
 from rest_framework import status
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from rest_framework.response import Response
@@ -67,7 +68,11 @@ class SandboxViewSet(GenericViewSet):
 
     def destroy(self, request, *args, **kwargs):
         # Revoke: soft-delete the facility and its sandbox users, then drop the job.
-        job = self.get_object()
+        # Idempotent: the job row is hard-deleted, so retries must not 404.
+        try:
+            job = self.get_object()
+        except Http404:
+            return Response(status=status.HTTP_204_NO_CONTENT)
         revoke_sandbox(job)
         SandboxJob.objects.filter(pk=job.pk).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

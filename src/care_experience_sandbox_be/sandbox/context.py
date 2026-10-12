@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 import care.emr.utils.valueset_coding_type  # noqa: F401
 from care.fixtures.base import CareFixtureBase
-from care.utils.lock import Lock, MultipleItemsLock
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import transaction
@@ -20,23 +19,17 @@ sys.modules["care.emr.utils.valueset_coding_type"].validate_valueset = (
 )
 
 
-def _noop(self, *args, **kwargs):
-    return None
+class _NoOpLock:
+    """Bypass care's redis locks inside the outer sandbox transaction."""
 
+    def __init__(self, *args, **kwargs):
+        pass
 
-@contextmanager
-def _locks_disabled():
-    """Lock.acquire needs a redis-style `cache.set(nx=True)` return value, and locks
-    released via transaction.on_commit never release inside the sandbox's
-    never-committed transaction. Neuter them at the base classes so every subclass
-    and call site is covered."""
-    with (
-        patch.object(Lock, "acquire", _noop),
-        patch.object(Lock, "release", _noop),
-        patch.object(MultipleItemsLock, "acquire", _noop),
-        patch.object(MultipleItemsLock, "release", _noop),
-    ):
-        yield
+    def acquire(self):
+        pass
+
+    def release(self):
+        pass
 
 
 class _SecureAPIClient(APIClient):
@@ -73,7 +66,11 @@ def sandbox_context(actor_user=None, base_cls: type[CareFixtureBase] = CareFixtu
 
         with (
             transaction.atomic(),
-            _locks_disabled(),
+            patch("care.emr.api.viewsets.patient.PatientCreateLock", _NoOpLock),
+            patch(
+                "care.emr.api.viewsets.encounter.FacilityEncounterCreateLock",
+                _NoOpLock,
+            ),
             warnings.catch_warnings(),
         ):
             warnings.filterwarnings(
