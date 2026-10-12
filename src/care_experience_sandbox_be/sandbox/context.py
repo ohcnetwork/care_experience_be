@@ -20,7 +20,10 @@ sys.modules["care.emr.utils.valueset_coding_type"].validate_valueset = (
 
 
 class _NoOpLock:
-    """Bypass PatientCreateLock inside the outer sandbox transaction."""
+    """Bypass care's redis locks inside the outer sandbox transaction."""
+
+    def __init__(self, *args, **kwargs):
+        pass
 
     def acquire(self):
         pass
@@ -64,6 +67,10 @@ def sandbox_context(actor_user=None, base_cls: type[CareFixtureBase] = CareFixtu
         with (
             transaction.atomic(),
             patch("care.emr.api.viewsets.patient.PatientCreateLock", _NoOpLock),
+            patch(
+                "care.emr.api.viewsets.encounter.FacilityEncounterCreateLock",
+                _NoOpLock,
+            ),
             warnings.catch_warnings(),
         ):
             warnings.filterwarnings(
